@@ -1,0 +1,45 @@
+services:
+  postgres-mono:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=monolithic
+      - POSTGRES_PASSWORD=mono_pass
+      - POSTGRES_DB=mono_db
+    volumes:
+      - postgres-mono-data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+    networks:
+      - monolithic-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U monolithic"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  monolithic-service:
+    build:
+      context: ../../services/monolithic-bpms
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - POSTGRES_HOST=postgres-mono
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=monolithic
+      - POSTGRES_PASSWORD=mono_pass
+      - POSTGRES_DB=mono_db
+    volumes:
+      - ../../config:/app/config:ro
+    depends_on:
+      postgres-mono:
+        condition: service_healthy
+    networks:
+      - monolithic-network
+
+networks:
+  monolithic-network:
+    name: monolithic-network
+    driver: bridge
+
+volumes:
+  postgres-mono-data:

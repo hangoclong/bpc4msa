@@ -1,0 +1,279 @@
+# Unified Docker Compose for BPC4MSA Comparative Experiment Platform
+# This file defines ALL services for all three architectures.
+# It has been consolidated to avoid Docker Compose 'include' issues.
+
+services:
+  # ==========================================
+  # Control & UI Services
+  # ==========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    networks:
+      - control-network
+    depends_on:
+      - control-api
+
+  control-api:
+    build:
+      context: ./services/control-api
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - STATISTICAL_SERVICE_URL=http://statistical-analysis:8000
+    networks:
+      - control-network
+      - bpc4msa-network
+      - synchronous-network
+      - monolithic-network
+    depends_on:
+      - statistical-analysis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  statistical-analysis:
+    build:
+      context: ./services/statistical-analysis
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8000"
+    networks:
+      - control-network
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # BPC4MSA Architecture Services
+  # ==========================================
+  zookeeper-bpc4msa:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - bpc4msa-network
+
+  kafka-bpc4msa:
+    image: confluentinc/cp-kafka:7.5.0
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-bpc4msa:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-bpc4msa:9093,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper-bpc4msa
+    networks:
+      - bpc4msa-network
+    healthcheck:
+      test: ["CMD-SHELL", "cub kafka-ready -b localhost:9093 1 10"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+
+  postgres-bpc4msa:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=bpc4msa
+      - POSTGRES_PASSWORD=bpc4msa_pass
+      - POSTGRES_DB=audit_db
+    volumes:
+      - postgres-bpc4msa-data:/var/lib/postgresql/data
+    networks:
+      - bpc4msa-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bpc4msa"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  business-logic:
+    build:
+      context: ./services/business-logic
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-bpc4msa:9093
+      - POSTGRES_HOST=postgres-bpc4msa
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=bpc4msa
+      - POSTGRES_PASSWORD=bpc4msa_pass
+      - POSTGRES_DB=audit_db
+    depends_on:
+      kafka-bpc4msa:
+        condition: service_healthy
+      postgres-bpc4msa:
+        condition: service_healthy
+    networks:
+      - bpc4msa-network
+
+  compliance-service:
+    build:
+      context: ./services/compliance-service
+      dockerfile: Dockerfile
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-bpc4msa:9093
+      - KAFKA_EVENTS_TOPIC=business-events
+      - KAFKA_VIOLATIONS_TOPIC=violations
+      - RULES_FILE=/app/config/rules.json
+      - RULES_CHECK_INTERVAL=10
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      kafka-bpc4msa:
+        condition: service_healthy
+    networks:
+      - bpc4msa-network
+
+  audit-service:
+    build:
+      context: ./services/audit-service
+      dockerfile: Dockerfile
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-bpc4msa:9093
+      - KAFKA_TOPICS=business-events,violations
+      - POSTGRES_HOST=postgres-bpc4msa
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=bpc4msa
+      - POSTGRES_PASSWORD=bpc4msa_pass
+      - POSTGRES_DB=audit_db
+    depends_on:
+      kafka-bpc4msa:
+        condition: service_healthy
+      postgres-bpc4msa:
+        condition: service_healthy
+    networks:
+      - bpc4msa-network
+
+  socket-service:
+    build:
+      context: ./services/socket-service
+      dockerfile: Dockerfile
+    ports:
+      - "8765:8765"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-bpc4msa:9093
+      - KAFKA_TOPICS=business-events,violations
+      - WEBSOCKET_HOST=0.0.0.0
+      - WEBSOCKET_PORT=8765
+    depends_on:
+      kafka-bpc4msa:
+        condition: service_healthy
+    networks:
+      - bpc4msa-network
+
+  # ==========================================
+  # Synchronous SOA Architecture Services
+  # ==========================================
+  postgres-sync:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=synchronous
+      - POSTGRES_PASSWORD=sync_pass
+      - POSTGRES_DB=sync_db
+    volumes:
+      - postgres-sync-data:/var/lib/postgresql/data
+      - ./services/synchronous/init-db:/docker-entrypoint-initdb.d:ro
+    networks:
+      - synchronous-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synchronous"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  soa-service:
+    build:
+      context: ./services/synchronous-soa
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - POSTGRES_HOST=postgres-sync
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=synchronous
+      - POSTGRES_PASSWORD=sync_pass
+      - POSTGRES_DB=sync_db
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      postgres-sync:
+        condition: service_healthy
+    networks:
+      - synchronous-network
+
+  # ==========================================
+  # Monolithic BPMS Architecture Services
+  # ==========================================
+  postgres-mono:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=monolithic
+      - POSTGRES_PASSWORD=mono_pass
+      - POSTGRES_DB=mono_db
+    volumes:
+      - postgres-mono-data:/var/lib/postgresql/data
+      - ./services/monolithic/init-db:/docker-entrypoint-initdb.d:ro
+    networks:
+      - monolithic-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U monolithic"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  monolithic-service:
+    build:
+      context: ./services/monolithic-bpms
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - POSTGRES_HOST=postgres-mono
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=monolithic
+      - POSTGRES_PASSWORD=mono_pass
+      - POSTGRES_DB=mono_db
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      postgres-mono:
+        condition: service_healthy
+    networks:
+      - monolithic-network
+
+# ==========================================
+# Networks & Volumes
+# ==========================================
+networks:
+  control-network:
+    driver: bridge
+  bpc4msa-network:
+    name: bpc4msa-network
+    driver: bridge
+  synchronous-network:
+    name: synchronous-network
+    driver: bridge
+  monolithic-network:
+    name: monolithic-network
+    driver: bridge
+
+volumes:
+  postgres-bpc4msa-data:
+  postgres-sync-data:
+  postgres-mono-data:

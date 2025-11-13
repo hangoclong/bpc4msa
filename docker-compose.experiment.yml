@@ -1,0 +1,62 @@
+# This file contains ONLY the resource limit overrides for the experiment.
+# It should be used alongside the main docker-compose.yml file.
+services:
+  # Control Plane
+  frontend:
+    deploy:
+      resources:
+        limits: { cpus: '0.5', memory: '512M' }
+  control-api:
+    deploy:
+      resources:
+        limits: { cpus: '1.0', memory: '1024M' }
+
+  # Monolithic Stack (Total: 1.0 CPU, 2048MB)
+  postgres-mono:
+    deploy:
+      resources:
+        limits: { cpus: '0.6', memory: '1536M' }
+  monolithic-service:
+    deploy:
+      resources:
+        limits: { cpus: '0.4', memory: '512M' }
+
+  # Synchronous SOA Stack (Total: 1.0 CPU, 2048MB)
+  postgres-sync:
+    deploy:
+      resources:
+        limits: { cpus: '0.6', memory: '1536M' }
+  soa-service:
+    deploy:
+      resources:
+        limits: { cpus: '0.4', memory: '512M' }
+
+  # BPC4MSA Stack (Total: 1.0 CPU, 2048MB)
+  postgres-bpc4msa:
+    deploy:
+      resources:
+        limits: { cpus: '0.3', memory: '768M' }
+  kafka-bpc4msa:
+    deploy:
+      resources:
+        limits: { cpus: '0.2', memory: '512M' }
+  zookeeper-bpc4msa:
+    deploy:
+      resources:
+        limits: { cpus: '0.1', memory: '128M' }
+  business-logic:
+    deploy:
+      resources:
+        limits: { cpus: '0.1', memory: '128M' }
+  compliance-service:
+    deploy:
+      resources:
+        limits: { cpus: '0.1', memory: '128M' }
+  audit-service:
+    deploy:
+      resources:
+        limits: { cpus: '0.1', memory: '192M' }
+  socket-service:
+    deploy:
+      resources:
+        limits: { cpus: '0.1', memory: '192M' }

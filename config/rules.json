@@ -1,0 +1,24 @@
+[
+  {
+    "id": "RULE001",
+    "type": "field_value",
+    "description": "Transaction status must not be 'suspended'",
+    "field": "status",
+    "forbidden_values": ["suspended", "blocked"]
+  },
+  {
+    "id": "RULE002",
+    "type": "field_range",
+    "description": "Transaction amount must be between 0 and 10000",
+    "field": "amount",
+    "min": 0,
+    "max": 10000
+  },
+  {
+    "id": "RULE003",
+    "type": "field_value",
+    "description": "User role must not be 'admin' for customer transactions",
+    "field": "user_role",
+    "forbidden_values": ["admin", "superuser"]
+  }
+]

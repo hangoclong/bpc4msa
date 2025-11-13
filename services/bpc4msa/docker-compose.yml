@@ -1,0 +1,124 @@
+services:
+  zookeeper-bpc4msa:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - bpc4msa-network
+
+  kafka-bpc4msa:
+    image: confluentinc/cp-kafka:7.5.0
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-bpc4msa:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-bpc4msa:9093,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper-bpc4msa
+    networks:
+      - bpc4msa-network
+
+  postgres-bpc4msa:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=bpc4msa
+      - POSTGRES_PASSWORD=bpc4msa_pass
+      - POSTGRES_DB=audit_db
+    volumes:
+      - postgres-bpc4msa-data:/var/lib/postgresql/data
+    networks:
+      - bpc4msa-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bpc4msa"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  business-logic:
+    build:
+      context: ../../services/business-logic
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-bpc4msa:9093
+      - POSTGRES_HOST=postgres-bpc4msa
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=bpc4msa
+      - POSTGRES_PASSWORD=bpc4msa_pass
+      - POSTGRES_DB=audit_db
+    depends_on:
+      kafka-bpc4msa:
+        condition: service_started
+      postgres-bpc4msa:
+        condition: service_healthy
+    networks:
+      - bpc4msa-network
+
+  compliance-service:
+    build:
+      context: ../../services/compliance-service
+      dockerfile: Dockerfile
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-bpc4msa:9093
+      - KAFKA_EVENTS_TOPIC=business-events
+      - KAFKA_VIOLATIONS_TOPIC=violations
+      - RULES_FILE=/app/config/rules.json
+      - RULES_CHECK_INTERVAL=10
+    volumes:
+      - ../../config:/app/config:ro
+    depends_on:
+      kafka-bpc4msa:
+        condition: service_started
+    networks:
+      - bpc4msa-network
+
+  audit-service:
+    build:
+      context: ../../services/audit-service
+      dockerfile: Dockerfile
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-bpc4msa:9093
+      - KAFKA_TOPICS=business-events,violations
+      - POSTGRES_HOST=postgres-bpc4msa
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=bpc4msa
+      - POSTGRES_PASSWORD=bpc4msa_pass
+      - POSTGRES_DB=audit_db
+    depends_on:
+      kafka-bpc4msa:
+        condition: service_started
+      postgres-bpc4msa:
+        condition: service_healthy
+    networks:
+      - bpc4msa-network
+
+  socket-service:
+    build:
+      context: ../../services/socket-service
+      dockerfile: Dockerfile
+    ports:
+      - "8765:8765"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-bpc4msa:9093
+      - KAFKA_TOPICS=business-events,violations
+      - WEBSOCKET_HOST=0.0.0.0
+      - WEBSOCKET_PORT=8765
+    depends_on:
+      kafka-bpc4msa:
+        condition: service_started
+    networks:
+      - bpc4msa-network
+
+networks:
+  bpc4msa-network:
+    name: bpc4msa-network
+    driver: bridge
+
+volumes:
+  postgres-bpc4msa-data:

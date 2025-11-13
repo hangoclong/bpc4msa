@@ -1,0 +1,138 @@
+# Docker Compose Override for Resource-Constrained Testing
+# Scenario A: Low-Resource Environment Test
+# From Future_Experiment_Design_Plan.md
+#
+# Usage:
+#   docker-compose -f docker-compose.yml -f docker-compose.resource-constrained.yml up -d
+#
+# Objective: Test architectural efficiency under resource constraints
+# Hypothesis: Monolithic will outperform BPC4MSA in low-resource environments
+
+services:
+  # Control API - Reduced resources
+  control-api:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  # BPC4MSA Services - Resource constrained
+  business-logic:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  compliance-service:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 96M
+        reservations:
+          cpus: '0.05'
+          memory: 48M
+
+  audit-service:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 96M
+        reservations:
+          cpus: '0.05'
+          memory: 48M
+
+  # Kafka - Needs more memory for message broker
+  kafka-bpc4msa:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # Zookeeper - Kafka dependency
+  zookeeper-bpc4msa:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
+  # PostgreSQL BPC4MSA
+  postgres-bpc4msa:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
+  # Synchronous SOA Service
+  soa-service:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 192M
+        reservations:
+          cpus: '0.15'
+          memory: 96M
+
+  postgres-sync:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
+  # Monolithic Service - Gets MORE resources (hypothesis test)
+  # This should demonstrate monolithic efficiency advantage
+  monolithic-service:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.4'  # More CPU than individual BPC4MSA services
+          memory: 256M # More memory
+        reservations:
+          cpus: '0.2'
+          memory: 128M
+
+  postgres-mono:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
+# Resource Summary:
+# Total CPU: 0.2+0.2+0.1+0.1+0.2+0.1+0.1+0.3+0.1+0.4+0.1 = 2.0 cores
+# Total Memory: 128+128+96+96+256+128+128+192+128+256+128 = 1664MB (~1.6GB)
+#
+# Note: This provides ~1.0 core and ~1GB per architecture stack
+# BPC4MSA stack: ~1.0 core, ~832MB
+# SOA stack: ~0.4 core, ~320MB
+# Monolithic stack: ~0.5 core, ~384MB
+# This creates a constrained environment to test architectural efficiency

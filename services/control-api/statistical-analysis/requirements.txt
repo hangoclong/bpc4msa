@@ -1,0 +1,21 @@
+# Statistical Analysis Requirements for BPC4MSA Publication
+# Critical libraries for scientific rigor and statistical significance testing
+
+# Core Statistical Libraries
+scipy>=1.9.0          # Statistical tests (t-test, ANOVA, etc.)
+statsmodels>=0.13.0   # Advanced statistical modeling and analysis
+numpy>=1.21.0         # Numerical operations and array manipulation
+pandas>=1.4.0         # Data manipulation and analysis
+
+# Data Visualization
+matplotlib>=3.5.0     # Plotting and figure generation
+seaborn>=0.11.0       # Statistical data visualization
+plotly>=5.0.0         # Interactive plots for dashboard
+
+# Statistical Utilities
+pingouin>=0.5.0       # User-friendly statistical testing
+scikit-posthocs>=0.6.0 # Post-hoc tests for multiple comparisons
+
+# Data Export and Reporting
+jinja2>=3.0.0          # Template engine for report generation
+weasyprint>=56.0       # HTML to PDF conversion for publication reports

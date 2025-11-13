@@ -1,0 +1,45 @@
+services:
+  postgres-sync:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=synchronous
+      - POSTGRES_PASSWORD=sync_pass
+      - POSTGRES_DB=sync_db
+    volumes:
+      - postgres-sync-data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+    networks:
+      - synchronous-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synchronous"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  soa-service:
+    build:
+      context: ../../services/synchronous-soa
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - POSTGRES_HOST=postgres-sync
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=synchronous
+      - POSTGRES_PASSWORD=sync_pass
+      - POSTGRES_DB=sync_db
+    volumes:
+      - ../../config:/app/config:ro
+    depends_on:
+      postgres-sync:
+        condition: service_healthy
+    networks:
+      - synchronous-network
+
+networks:
+  synchronous-network:
+    name: synchronous-network
+    driver: bridge
+
+volumes:
+  postgres-sync-data:
